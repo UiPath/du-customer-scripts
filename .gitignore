@@ -1,0 +1,11 @@
+# editors
+.vs/
+.idea/
+
+# builds and caches
+**/__pycache__
+
+# python envs
+env/
+venv/
+.env
