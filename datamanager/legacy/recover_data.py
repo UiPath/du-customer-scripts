@@ -24,7 +24,7 @@ from zipfile import ZipFile
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser = argparse.ArgumentParser(description='Recover files from a running DM instance.')
     parser.add_argument("--dataset-dir", help="usually /app/data/default in container", default="/app/data/default")
     args = parser.parse_args()
     try:
