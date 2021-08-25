@@ -112,11 +112,14 @@ def process_split_file_one_archive(images: list, suffix: int):
                 lines.append(row)
 
     split_file_name = Configs.split_path.stem + "_" + str(suffix)
-    temp_split_path = Configs.split_path.with_stem(split_file_name)
+    temp_split_path = change_file_name(Configs.split_path, split_file_name)
     with open(temp_split_path, "w", encoding="utf-8", newline="") as write_file_handle:
         writer = csv.writer(write_file_handle, delimiter = '\t')
         writer.writerows(lines)
     return temp_split_path
+
+def change_file_name(path: Path, file_name: str):
+    return f"{path.parent}/{file_name}.{path.suffix}"
 
 
 if __name__ == "__main__":
