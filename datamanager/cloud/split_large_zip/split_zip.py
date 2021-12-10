@@ -95,7 +95,9 @@ def get_pages_by_documents(document_names: dict, image_names: dict):
 
 
 def create_archive(folder_contents_path: str, image_names: list, suffix: int):
-    with zipfile.ZipFile(Configs.zip_name + "_" + str(suffix) + ".zip", "w") as zip_handle:
+    with zipfile.ZipFile(
+        Configs.zip_name + "_" + str(suffix) + ".zip", "w", compression=zipfile.ZIP_DEFLATED
+    ) as zip_handle:
         for root, _, files in os.walk(folder_contents_path):
             for file in files:
                 for image_name in image_names:
