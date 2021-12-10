@@ -10,14 +10,16 @@ The result of running the script is multiple zip files that are all below 1GB an
 import argparse
 import csv
 import os
+import re
 import tempfile
 import zipfile
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
 
-SIZE_LIMIT_IN_BYTES = 1024000000 
+SIZE_LIMIT_IN_BYTES = 300000000
 PAGE_LIMIT = 1500
+
 
 @dataclass
 class Configs:
@@ -45,7 +47,7 @@ def process_zip(path: Path):
 
             directory_structure = list(Path(temp_zip_contents).iterdir())
             while "images" not in [str(p.stem) for p in directory_structure]:
-                directory_structure = list(directory_structure[0].iterdir())                         
+                directory_structure = list(directory_structure[0].iterdir())
 
             top_level_paths = {p.name: p for p in directory_structure}
 
@@ -63,10 +65,12 @@ def split_files(images_path: Path, latest_path: Path, folder_contents_path: str)
     current_size = Configs.start_size
     archive_count = 1
     image_paths = {path.name: path for path in list(Path(images_path).iterdir())}
-    latest_paths = {path.stem: path for path in list(Path(latest_path).iterdir())}
+    latest_paths = {path.stem: path for path in list(Path(latest_path).iterdir())}  # keys are document names
+    pages_by_documents = get_pages_by_documents(latest_paths, image_paths)
 
-    for image_name in image_paths:
+    for image_name in latest_paths:
         size = image_paths[image_name].stat().st_size + latest_paths[image_name].stat().st_size
+        size += sum([x.stat().st_size for x in pages_by_documents[image_name]])
         current_size += size
         if current_size < SIZE_LIMIT_IN_BYTES and len(image_names) < PAGE_LIMIT:
             image_names.append(image_name)
@@ -74,9 +78,20 @@ def split_files(images_path: Path, latest_path: Path, folder_contents_path: str)
             create_archive(folder_contents_path, image_names, archive_count)
             archive_count += 1
             current_size = Configs.start_size + size
-            image_names = list()
-            image_names.append(image_name)
+            image_names = [image_name]
     create_archive(folder_contents_path, image_names, archive_count)  # for the last zip
+
+
+def get_pages_by_documents(document_names: dict, image_names: dict):
+    pages_by_documents = {}
+    for document_name in document_names:
+        if document_name.split(".")[-1] in ("pdf", "tiff", "tif"):
+            pages_by_documents[document_name] = [
+                image_names[x] for x in image_names if re.search(re.escape(document_name) + "_\d+.jpg", x)
+            ]  # the paths of the pages
+        else:
+            pages_by_documents[document_name] = []
+    return pages_by_documents
 
 
 def create_archive(folder_contents_path: str, image_names: list, suffix: int):
@@ -114,9 +129,10 @@ def process_split_file_one_archive(images: list, suffix: int):
     split_file_name = Configs.split_path.stem + "_" + str(suffix)
     temp_split_path = change_file_name(Configs.split_path, split_file_name)
     with open(temp_split_path, "w", encoding="utf-8", newline="") as write_file_handle:
-        writer = csv.writer(write_file_handle, delimiter = '\t')
+        writer = csv.writer(write_file_handle, delimiter="\t")
         writer.writerows(lines)
     return temp_split_path
+
 
 def change_file_name(path: Path, file_name: str):
     return f"{path.parent}/{file_name}.{path.suffix}"
