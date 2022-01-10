@@ -8,8 +8,8 @@ imported in a clean DataManager (legacy or not) instance and exported from there
 Usage::
     python recover_data.py
         - will recover data from the Docker container, has to run in the same container
-    python recover_data.py --dataset-dir C:\\path\\to\\data\\folder\\default
-        - will recover the data from the specified folder
+    python recover_data.py --dataset-dir C:\\path\\to\\data\\folder\\default --export-dir C:\\where\\to\\export
+        - will recover the data from the specified folder to the specified folder
 
 The dataset-dir has to be the folder where schema.json and the input/ and output/ folders are located
 """
