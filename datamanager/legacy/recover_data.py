@@ -8,8 +8,8 @@ imported in a clean DataManager (legacy or not) instance and exported from there
 Usage::
     python recover_data.py
         - will recover data from the Docker container, has to run in the same container
-    python recover_data.py --dataset-dir C:\\path\\to\\data\\folder\\default
-        - will recover the data from the specified folder
+    python recover_data.py --dataset-dir C:\\path\\to\\data\\folder\\default --export-dir C:\\where\\to\\export
+        - will recover the data from the specified folder to the specified folder
 
 The dataset-dir has to be the folder where schema.json and the input/ and output/ folders are located
 """
@@ -24,25 +24,37 @@ from zipfile import ZipFile
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Recover files from a running DM instance.')
-    parser.add_argument("--dataset-dir", help="usually /app/data/default in container", default="/app/data/default")
+    parser = argparse.ArgumentParser(
+        description="Recover files from a running DM instance."
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        help="usually /app/data/default in container",
+        default="/app/data/default",
+    )
+    parser.add_argument(
+        "--export-dir",
+        help="folder where to save the backup zip; folder must exist and should be outside the PVC to avoid space problems",
+        default="/tmp",
+    )
     args = parser.parse_args()
     try:
-        export(Path(args.dataset_dir))
+        export(Path(args.dataset_dir), Path(args.export_dir))
     except Exception as e:
         print(f"Export failed. Reason: \n {e}")
         # Uncomment this to see the actual error and traceback - debugging purposes
         # raise
 
 
-def export(dataset_path: Path):
-    root_dir = Path("/app") if str(dataset_path) == "/app/data/default" else dataset_path
-    export_tmp_file = root_dir.joinpath("backup.tmp")
-    export_zip_file = root_dir.joinpath("backup.zip")
+def export(dataset_path: Path, export_dir: Path):
+    export_tmp_file = export_dir.joinpath("backup.tmp")
+    export_zip_file = export_dir.joinpath("backup.zip")
 
     print(f"Export - started...")
 
-    fnames = list(dataset_path.joinpath("input").glob("*.jpg")) + list(dataset_path.joinpath("input").glob("*.png"))
+    fnames = list(dataset_path.joinpath("input").glob("*.jpg")) + list(
+        dataset_path.joinpath("input").glob("*.png")
+    )
     documents = []
     split_list = ["files\tsubset"]
     print(f"Export - processing documents")
@@ -71,17 +83,24 @@ def export(dataset_path: Path):
     print(f"Export - archiving documents")
     with ZipFile(export_tmp_file, "w") as export_zip:
         for doc in documents:
-            export_zip.write(str(dataset_path.joinpath("input", doc["fname"])),
-                             os.path.join("images", doc["fname"]))
+            export_zip.write(
+                str(dataset_path.joinpath("input", doc["fname"])),
+                os.path.join("images", doc["fname"]),
+            )
             # -- update split_list
-            doc["subset"] = doc["subset"] if "subset" in doc and doc["subset"] not in ["", "none", None,
-                                                                                       "None"] else "TRAIN"
+            doc["subset"] = (
+                doc["subset"]
+                if "subset" in doc and doc["subset"] not in ["", "none", None, "None"]
+                else "TRAIN"
+            )
             split_list.append(doc["fname"] + "\t" + doc["subset"])
             if "language" in doc and type(doc["language"]) != str:
                 doc["language"] = ""
             # -- save
             json_data = json.dumps(doc, indent=3)
-            export_zip.writestr(os.path.join("latest", doc["fname"] + ".json"), json_data)
+            export_zip.writestr(
+                os.path.join("latest", doc["fname"] + ".json"), json_data
+            )
 
     print("Export - archiving schema")
     with ZipFile(export_tmp_file, "a") as export_zip:
@@ -139,7 +158,11 @@ def load_document(dspath: Path, fname: str, fname_key: str):
 
     item["fname"] = os.path.basename(fname)
     if "subset" in item:
-        item["subset"] = item["subset"] if item["subset"] not in ["", "none", None, "None"] else "TRAIN"
+        item["subset"] = (
+            item["subset"]
+            if item["subset"] not in ["", "none", None, "None"]
+            else "TRAIN"
+        )
     return item
 
 
@@ -151,7 +174,9 @@ def create_schema_data(dspath: Path) -> dict:
             print("WARNING: Schema file is invalid or corrupted")
             return {}
     # remove hidden fields
-    schema_data["extraction"] = [x for x in schema_data["extraction"] if not x.get("hidden")]
+    schema_data["extraction"] = [
+        x for x in schema_data["extraction"] if not x.get("hidden")
+    ]
 
     for item in schema_data["extraction"]:
         if "color" in item:
@@ -209,7 +234,9 @@ def export_normalize(original_doc: dict) -> dict:
     words_sorted_grouped_per_line = []
     lines = []
     for line_id in sorted(line_boxes.keys()):
-        line = sorted(line_boxes[line_id], key=lambda w: w["boundingPoly"]["vertices"][0]["x"])
+        line = sorted(
+            line_boxes[line_id], key=lambda w: w["boundingPoly"]["vertices"][0]["x"]
+        )
         line_str = []
         line_tags_str = []
         for w in line:
@@ -238,5 +265,5 @@ def export_normalize(original_doc: dict) -> dict:
     return rez
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
