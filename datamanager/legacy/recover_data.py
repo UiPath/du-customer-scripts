@@ -47,9 +47,8 @@ def main():
 
 
 def export(dataset_path: Path, export_dir: Path):
-    root_dir = Path("/app") if str(dataset_path) == "/app/data/default" else export_dir
-    export_tmp_file = root_dir.joinpath("backup.tmp")
-    export_zip_file = root_dir.joinpath("backup.zip")
+    export_tmp_file = export_dir.joinpath("backup.tmp")
+    export_zip_file = export_dir.joinpath("backup.zip")
 
     print(f"Export - started...")
 
