@@ -12,13 +12,17 @@ import csv
 import os
 import re
 import tempfile
+from threading import Thread
 import zipfile
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
+import tkinter as tk
 
-SIZE_LIMIT_IN_BYTES = 300000000
+SIZE_LIMIT_IN_BYTES = 1000000000
 PAGE_LIMIT = 1500
+
+window = None
 
 
 @dataclass
@@ -29,14 +33,85 @@ class Configs:
     zip_name: str = ""
 
 
+class PropagatingThread(Thread):
+    def run(self):
+        self.exc = None
+        try:
+            self.ret = self._target(*self._args, **self._kwargs)
+        except BaseException as ex:
+            self.exc = ex
+
+    def join(self, timeout=None):
+        super(PropagatingThread, self).join(timeout)
+        if self.exc:
+            raise self.exc
+        return self.ret
+
+
+class Window:
+    ZIP_SIZE_OPTIONS = [
+        "MB",
+        "GB"
+    ]
+    ZIP_SIZE_DICT = {
+        "MB": 2**20,
+        "GB": 2**30
+    }
+
+    def __init__(self):
+        self.gui = tk.Tk(className="Split ZIP")
+        self.gui.geometry("200x200")
+        self.gui.maxsize(width=500,height=500)
+        self.gui.minsize(width=250, height=250)
+        # self.gui.grid_columnconfigure(1, weight=10)
+
+        self.path_label = tk.Label(self.gui, text = "ZIP Path:")
+        self.path_label.place(relx=0, rely=0.1)
+        
+        self.path_field = tk.Entry(self.gui, bd=3)
+        self.path_field.place(x=55, rely=0.1, relwidth=0.7)
+
+        self.button = tk.Button(self.gui, command=self.split, text="Split zip")
+        self.button.place(rely=0.3, x=10, width=60)
+
+        self.selected_zip_size = tk.StringVar()
+        self.selected_zip_size.set(Window.ZIP_SIZE_OPTIONS[0])
+
+        self.size_options = tk.OptionMenu(self.gui, self.selected_zip_size, *Window.ZIP_SIZE_OPTIONS)
+        self.size_options.place(rely=0.4, x=10, width=50)
+
+        self.split_zip_started_label = tk.Label(self.gui, text="Split zip started", fg="green")
+
+        self.error_label = tk.Label(self.gui, text="")
+        self.error_label.place(rely=0.7, x=10)
+
+    def split(self):
+        try:
+            self.split_zip_started_label.place(rely=0.9, x=10)
+            self.error_label.place_forget()
+            thread = PropagatingThread(target=process_zip, args=[Path(self.path_field.get())])
+            thread.start()
+            thread.join()
+        except Exception as e:
+            print("1234")
+            self.error_label.config(text=f"Split failed. Reason: \n {e}")
+            self.error_label.place(rely=0.7, x=10)
+            self.split_zip_started_label.place_forget()
+    
+
 def main():
-    parser = argparse.ArgumentParser(description="Split a dataset into multiple archives.")
-    parser.add_argument("--path", help="the absolute path to the zip file")
-    args = parser.parse_args()
-    try:
-        process_zip(Path(args.path))
-    except Exception as e:
-        print(f"Split failed. Reason: \n {e}")
+    global window
+    window = Window()
+
+    window.gui.mainloop()
+
+    # parser = argparse.ArgumentParser(description="Split a dataset into multiple archives.")
+    # parser.add_argument("--path", help="the absolute path to the zip file")
+    # args = parser.parse_args()
+    # try:
+    #     process_zip(Path(args.path))
+    # except Exception as e:
+    #     print(f"Split failed. Reason: \n {e}")
 
 
 def process_zip(path: Path):
