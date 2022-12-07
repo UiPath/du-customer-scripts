@@ -7,22 +7,21 @@ Usage:
 
 The result of running the script is multiple zip files that are all below 1GB and have less than 1500 files.
 """
-import argparse
 import csv
 import os
 import re
 import tempfile
-from threading import Thread
+import threading
 import zipfile
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
 import tkinter as tk
+from tkinter import messagebox
+import sys
 
 SIZE_LIMIT_IN_BYTES = 1000000000
 PAGE_LIMIT = 1500
-
-window = None
 
 
 @dataclass
@@ -31,21 +30,6 @@ class Configs:
     split_path: Path = Path()
     start_size: int = 0  # size of schema and split file
     zip_name: str = ""
-
-
-class PropagatingThread(Thread):
-    def run(self):
-        self.exc = None
-        try:
-            self.ret = self._target(*self._args, **self._kwargs)
-        except BaseException as ex:
-            self.exc = ex
-
-    def join(self, timeout=None):
-        super(PropagatingThread, self).join(timeout)
-        if self.exc:
-            raise self.exc
-        return self.ret
 
 
 class Window:
@@ -59,59 +43,99 @@ class Window:
     }
 
     def __init__(self):
+        self.is_split_in_progress = False
+
         self.gui = tk.Tk(className="Split ZIP")
         self.gui.geometry("200x200")
         self.gui.maxsize(width=500,height=500)
         self.gui.minsize(width=250, height=250)
-        # self.gui.grid_columnconfigure(1, weight=10)
+
+        self.gui.protocol("WM_DELETE_WINDOW", self.on_close_gui)
 
         self.path_label = tk.Label(self.gui, text = "ZIP Path:")
-        self.path_label.place(relx=0, rely=0.1)
+        self.path_label.place(rely=0.1)
         
         self.path_field = tk.Entry(self.gui, bd=3)
         self.path_field.place(x=55, rely=0.1, relwidth=0.7)
 
-        self.button = tk.Button(self.gui, command=self.split, text="Split zip")
-        self.button.place(rely=0.3, x=10, width=60)
+        self.zip_max_size_label = tk.Label(self.gui, text="ZIP Size:")
+        self.zip_max_size_label.place(rely=0.2)
+
+        self.zip_max_size_field = tk.Entry(self.gui, bd=3)
+        self.zip_max_size_field.place(x=55, rely=0.2, relwidth=0.3)
 
         self.selected_zip_size = tk.StringVar()
         self.selected_zip_size.set(Window.ZIP_SIZE_OPTIONS[0])
 
         self.size_options = tk.OptionMenu(self.gui, self.selected_zip_size, *Window.ZIP_SIZE_OPTIONS)
-        self.size_options.place(rely=0.4, x=10, width=50)
+        self.size_options.place(rely=0.19, x=140, height=25)
+
+        self.file_limit_label = tk.Label(self.gui, text="File limit:")
+        self.file_limit_label.place(rely=0.3)
+
+        self.file_limit_field = tk.Entry(self.gui, bd=3)
+        self.file_limit_field.place(x=55, rely=0.3, relwidth=0.3)
+
+        self.button = tk.Button(self.gui, command=self.perform_split, text="Split zip")
+        self.button.place(rely=0.5, x=150)
 
         self.split_zip_started_label = tk.Label(self.gui, text="Split zip started", fg="green")
+
+        self.current_zip_no_label = tk.Label(self.gui, fg="green")
 
         self.error_label = tk.Label(self.gui, text="")
         self.error_label.place(rely=0.7, x=10)
 
-    def split(self):
-        try:
-            self.split_zip_started_label.place(rely=0.9, x=10)
-            self.error_label.place_forget()
-            thread = PropagatingThread(target=process_zip, args=[Path(self.path_field.get())])
-            thread.start()
-            thread.join()
-        except Exception as e:
-            print("1234")
-            self.error_label.config(text=f"Split failed. Reason: \n {e}")
-            self.error_label.place(rely=0.7, x=10)
-            self.split_zip_started_label.place_forget()
+    def perform_split(self):
+        self.is_split_in_progress = True
+
+        self.current_zip_no_label.config(text="")
+        self.split_zip_started_label.place(rely=0.8, x=10)
+        self.current_zip_no_label.place(rely=0.9, x=10)
+
+        self.button["state"] = "disabled"
+        self.error_label.place_forget()
+        split_zip_thread = threading.Thread(target=process_zip, args = [Path(self.path_field.get())], daemon=True)
+        split_zip_thread.start()
     
+    def update_zip_status(self, message, is_split_finished: bool = False):
+        if is_split_finished:
+            self.is_split_in_progress = False
+            self.split_zip_started_label.place_forget()
+            self.button["state"] = "active"
+        self.current_zip_no_label.config(text=message, fg="green")
+
+    def handle_exception(self, args):
+        self.is_split_in_progress = False
+        self.split_zip_started_label.place_forget()
+        self.current_zip_no_label.place_forget()
+        self.button["state"] = "active"
+        if not args.exc_value:
+            self.error_label.config(text=f"Split failed.", fg="red")
+        else: 
+            self.error_label.config(text=f"Split failed.\n Reason: {args.exc_value}", fg="red")
+        self.error_label.place(rely=0.65, x=10)
+    
+    def on_close_gui(self):
+        if not self.is_split_in_progress:
+            self.gui.destroy()
+            return
+
+        if messagebox.askquestion("Quit", "Closing the window will end the zip split. Do you want to continue?"):
+            self.gui.destroy()
+            sys.exit()
+
+
+window: Window = None
+
 
 def main():
     global window
     window = Window()
 
-    window.gui.mainloop()
+    threading.excepthook = window.handle_exception
 
-    # parser = argparse.ArgumentParser(description="Split a dataset into multiple archives.")
-    # parser.add_argument("--path", help="the absolute path to the zip file")
-    # args = parser.parse_args()
-    # try:
-    #     process_zip(Path(args.path))
-    # except Exception as e:
-    #     print(f"Split failed. Reason: \n {e}")
+    window.gui.mainloop()
 
 
 def process_zip(path: Path):
@@ -151,10 +175,13 @@ def split_files(images_path: Path, latest_path: Path, folder_contents_path: str)
             image_names.append(image_name)
         else:
             create_archive(folder_contents_path, image_names, archive_count)
+            window.update_zip_status(f"Processed zip number {archive_count}")
+
             archive_count += 1
             current_size = Configs.start_size + size
             image_names = [image_name]
     create_archive(folder_contents_path, image_names, archive_count)  # for the last zip
+    window.update_zip_status(f"Split zip finished with {archive_count} zip files.", True)
 
 
 def get_pages_by_documents(document_names: dict, image_names: dict):
