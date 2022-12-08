@@ -110,7 +110,7 @@ class Window:
 
         self.button["state"] = "disabled"
         self.error_label.place_forget()
-        split_zip_thread = threading.Thread(target=process_zip, args = [Path(self.path_field.get())], daemon=True)
+        split_zip_thread = threading.Thread(target=process_zip, args = [Path(self.path_field.get()), self], daemon=True)
         split_zip_thread.start()
     
     def update_zip_status(self, message, is_split_finished: bool = False):
@@ -171,7 +171,7 @@ def main():
     window.gui.mainloop()
 
 
-def process_zip(path: Path):
+def process_zip(path: Path, window: tk.Tk):
     Configs.zip_name = path.stem
     with tempfile.TemporaryDirectory() as temp_zip_contents:
         with zipfile.ZipFile(path, "r") as zip_handle:
@@ -189,10 +189,10 @@ def process_zip(path: Path):
             Configs.split_path = top_level_paths["split.csv"]
             Configs.start_size += Configs.split_path.stat().st_size
 
-            split_files(top_level_paths["images"], top_level_paths["latest"], temp_zip_contents)
+            split_files(top_level_paths["images"], top_level_paths["latest"], temp_zip_contents, window)
 
 
-def split_files(images_path: Path, latest_path: Path, folder_contents_path: str):
+def split_files(images_path: Path, latest_path: Path, folder_contents_path: str, window: tk.Tk):
     image_names = list()
     current_size = Configs.start_size
     archive_count = 1
