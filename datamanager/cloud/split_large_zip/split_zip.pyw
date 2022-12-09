@@ -23,8 +23,8 @@ import tkinter as tk
 from tkinter import messagebox
 import sys
 
-DEFAULT_ZIP_SIZE = 100
-DEFAULT_FILE_LIMIT = 100
+DEFAULT_ZIP_SIZE_IN_KB = 100
+DEFAULT_PAGE_LIMIT = 100
 
 
 @dataclass
@@ -37,7 +37,7 @@ class Configs:
 
 class Window:
     size_limit_in_bytes: int = 1000000
-    file_limit: int = 1500
+    page_limit: int = 1500
     zip_size_options: list = [
         "KB",
         "MB",
@@ -53,13 +53,12 @@ class Window:
         self.is_split_in_progress = False
 
         self.gui = tk.Tk(className="Split ZIP")
-        self.gui.geometry("300x250")
-        self.gui.maxsize(width=500,height=500)
-        self.gui.minsize(width=250, height=250)
+        self.gui.geometry("640x360")
+        self.gui.minsize(width=300, height=300)
 
         self.gui.protocol("WM_DELETE_WINDOW", self.on_close_gui)
 
-        self.path_label = tk.Label(self.gui, text = "ZIP Path:")
+        self.path_label = tk.Label(self.gui, text="ZIP Path:")
         self.path_label.place(rely=0.1)
         
         self.path_field = tk.Entry(self.gui, bd=3)
@@ -69,21 +68,21 @@ class Window:
         self.zip_max_size_label.place(rely=0.2)
 
         self.zip_max_size_field = tk.Entry(self.gui, bd=3)
-        self.zip_max_size_field.insert(0, DEFAULT_ZIP_SIZE)
-        self.zip_max_size_field.place(x=55, rely=0.2, relwidth=0.3)
+        self.zip_max_size_field.insert(0, DEFAULT_ZIP_SIZE_IN_KB)
+        self.zip_max_size_field.place(x=55, rely=0.2)
 
         self.selected_zip_size = tk.StringVar()
         self.selected_zip_size.set(Window.zip_size_options[0])
 
         self.size_options = tk.OptionMenu(self.gui, self.selected_zip_size, *Window.zip_size_options)
-        self.size_options.place(rely=0.19, x=150, height=25)
+        self.size_options.place(rely=0.195, x=190, height=25)
 
-        self.file_limit_label = tk.Label(self.gui, text="File limit:")
-        self.file_limit_label.place(rely=0.3)
+        self.page_limit_label = tk.Label(self.gui, text="File limit:")
+        self.page_limit_label.place(rely=0.3)
 
-        self.file_limit_field = tk.Entry(self.gui, bd=3)
-        self.file_limit_field.place(x=55, rely=0.3, relwidth=0.3)
-        self.file_limit_field.insert(0, DEFAULT_FILE_LIMIT)
+        self.page_limit_field = tk.Entry(self.gui, bd=3)
+        self.page_limit_field.place(x=55, rely=0.3)
+        self.page_limit_field.insert(0, DEFAULT_ZIP_SIZE_IN_KB)
         
         self.button = tk.Button(self.gui, command=self.perform_split, text="Split zip")
         self.button.place(rely=0.45, x=5)
@@ -100,7 +99,7 @@ class Window:
             return
 
         Window.size_limit_in_bytes = int(self.zip_max_size_field.get()) * Window.size_in_bytes_map[self.selected_zip_size.get()]
-        Window.file_limit = int(self.file_limit_field.get())
+        Window.page_limit = int(self.page_limit_field.get())
 
         self.is_split_in_progress = True
 
@@ -110,7 +109,7 @@ class Window:
 
         self.button["state"] = "disabled"
         self.error_label.place_forget()
-        split_zip_thread = threading.Thread(target=process_zip, args = [Path(self.path_field.get()), self], daemon=True)
+        split_zip_thread = threading.Thread(target=process_zip, args=[Path(self.path_field.get()), self], daemon=True)
         split_zip_thread.start()
     
     def update_zip_status(self, message, is_split_finished: bool = False):
@@ -133,7 +132,7 @@ class Window:
 
     def is_input_valid(self) -> bool:
         zip_max_size = self.zip_max_size_field.get()
-        file_limit = self.file_limit_field.get()
+        page_limit = self.page_limit_field.get()
 
         if not self.path_field.get():
             messagebox.showerror("Error", "Zip path must not be empty")
@@ -143,7 +142,7 @@ class Window:
             messagebox.showerror("Error", "Zip size must be a positive integer")
             return False
 
-        if not file_limit.isdigit() or int(file_limit) <= 0:
+        if not page_limit.isdigit() or int(page_limit) <= 0:
             messagebox.showerror("Error", "File limit must be a positive integer")
             return False
 
@@ -204,7 +203,7 @@ def split_files(images_path: Path, latest_path: Path, folder_contents_path: str,
         size = image_paths[image_name].stat().st_size + latest_paths[image_name].stat().st_size
         size += sum([x.stat().st_size for x in pages_by_documents[image_name]])
         current_size += size
-        if current_size < Window.size_limit_in_bytes and len(image_names) < Window.file_limit:
+        if current_size < Window.size_limit_in_bytes and len(image_names) < Window.page_limit:
             image_names.append(image_name)
         else:
             create_archive(folder_contents_path, image_names, archive_count)
