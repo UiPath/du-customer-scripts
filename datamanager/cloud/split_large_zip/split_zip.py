@@ -3,8 +3,9 @@
 This script is used to split zip files (DM exports) that are above 1GB in size or over 1500 files.
 
 Usage:
-    split_zip.py --path C:\\path\\to\\import\\archive.zip
-
+    User interface -> python split_zip.py --terminal no
+    Use the terminal -> python split_zip.py --path C:\\path\\to\\import\\archive-zip
+    Use the terminal -> python split_zip.py --terminal yes --path C:\\path\\to\\import\\archive-zip
 The result of running the script is multiple zip files that are all below 1GB and have less than 1500 files.
 """
 import argparse
@@ -12,14 +13,15 @@ import csv
 import os
 import re
 import tempfile
+import threading
+from typing import Callable
 import zipfile
 from dataclasses import dataclass
 from io import TextIOWrapper
 from pathlib import Path
 
-SIZE_LIMIT_IN_BYTES = 300000000
-PAGE_LIMIT = 1500
-
+from gui import Window
+from utils import ZipUtils
 
 @dataclass
 class Configs:
@@ -29,12 +31,35 @@ class Configs:
     zip_name: str = ""
 
 
+window: Window = None
+print_function: Callable = None
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Split a dataset into multiple archives.")
-    parser.add_argument("--path", help="the absolute path to the zip file")
-    args = parser.parse_args()
     try:
-        process_zip(Path(args.path))
+        parser = argparse.ArgumentParser(description="Split a dataset into multiple archives.")
+        parser.add_argument("--terminal", help="Use terminal or user interface (yes/no)", default=None)
+        parser.add_argument("--path", default=None, help="the absolute path to the zip file")
+        args = parser.parse_args()
+
+        if not args.terminal:
+            print("To use the user interface run the script file in the following way\npython split_zip.py --terminal n")
+
+        global print_function
+        if not args.terminal or args.terminal.lower() == "yes":
+            if not args.path:
+                print("--path option is required")
+                return
+            print_function = print
+            process_zip(Path(args.path))
+        else:
+            global window
+            window = Window(process_zip)
+            print_function = window.update_zip_status
+
+            threading.excepthook = window.handle_exception
+
+            window.gui.mainloop()
     except Exception as e:
         print(f"Split failed. Reason: \n {e}")
 
@@ -72,14 +97,19 @@ def split_files(images_path: Path, latest_path: Path, folder_contents_path: str)
         size = image_paths[image_name].stat().st_size + latest_paths[image_name].stat().st_size
         size += sum([x.stat().st_size for x in pages_by_documents[image_name]])
         current_size += size
-        if current_size < SIZE_LIMIT_IN_BYTES and len(image_names) < PAGE_LIMIT:
+        if current_size < ZipUtils.size_limit_in_bytes and len(image_names) < ZipUtils.page_limit:
             image_names.append(image_name)
         else:
             create_archive(folder_contents_path, image_names, archive_count)
+            print_function(f"Processed zip number {archive_count}")
+
             archive_count += 1
             current_size = Configs.start_size + size
             image_names = [image_name]
     create_archive(folder_contents_path, image_names, archive_count)  # for the last zip
+    if window:
+        window.is_split_finished = True
+    print_function(f"Split zip finished with {archive_count} zip files.")
 
 
 def get_pages_by_documents(document_names: dict, image_names: dict):
